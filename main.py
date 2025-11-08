@@ -62,11 +62,13 @@ def build_agent_card(agent_config: AgentConfigModel) -> AgentCard:
 
     # 添加provider信息（如果有）
     if agent_config.provider:
-        card.provider = {
-            "organization": agent_config.provider.organization,
-            "url": agent_config.provider.url,
-            "email": agent_config.provider.email,
-        }
+        provider_info = {"organization": agent_config.provider.organization}
+        # 只添加非None的字段
+        if agent_config.provider.url:
+            provider_info["url"] = agent_config.provider.url
+        if agent_config.provider.email:
+            provider_info["email"] = agent_config.provider.email
+        card.provider = provider_info
 
     return card
 

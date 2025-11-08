@@ -1,7 +1,7 @@
 """
-�@Agent!W
+基础Agent模块
 
-Л@	Agent��@�a{
+提供所有Agent的基础抽象类
 """
 
 from agents.base.base_agent import BaseAgent

@@ -1,7 +1,7 @@
 """
-Echo Agent!W
+Echo Agent模块
 
-Л�U���Agent��
+提供简单的回声Agent实现
 """
 
 from agents.echo.echo_agent import EchoAgent

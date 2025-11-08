@@ -80,11 +80,20 @@ agents:
     type: echo           # Agent类型
     host: 0.0.0.0        # 监听地址
     port: 9001           # 端口（必须唯一）
+
+    # 自定义URL（可选）
+    # 如果不设置，将自动生成为 http://localhost:{port}
+    # 在使用端口转发、反向代理或云端notebook时很有用
+    # 例如端口转发: url: "https://example.com/proxy/9001/"
+    # 例如ngrok: url: "https://abc123.ngrok.io"
+    # 例如云端notebook: url: "https://nat-notebook.example.com/ws-xxx/proxy/9001/"
+    # url: "https://your-custom-url.com"
+
     # Provider信息（可选）
     provider:
       organization: "Demo Organization"
-      url: "https://example.com"
-      email: "support@example.com"
+      url: "https://example.com"      # 可选
+      email: "support@example.com"    # 可选
 
   # GPT Assistant - GPT-4驱动的通用助手
   - name: gpt-assistant

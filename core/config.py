@@ -73,21 +73,12 @@ class AgentConfigModel(BaseModel):
     # 额外配置
     extra: dict[str, Any] = Field(default_factory=dict)
 
-    @field_validator("url", mode="before")
-    @classmethod
-    def generate_url(cls, v: str | None, info) -> str:
-        """如果未提供url，根据host和port生成"""
-        if v:
-            return v
-        # 从values中获取host和port
-        if hasattr(info, 'data'):
-            host = info.data.get('host', '0.0.0.0')
-            port = info.data.get('port')
-            if port:
-                # 如果host是0.0.0.0，使用localhost
-                display_host = 'localhost' if host == '0.0.0.0' else host
-                return f"http://{display_host}:{port}"
-        return v
+    def model_post_init(self, __context):
+        """初始化后自动生成URL"""
+        if not self.url:
+            # 如果host是0.0.0.0，使用localhost
+            display_host = 'localhost' if self.host == '0.0.0.0' else self.host
+            self.url = f"http://{display_host}:{self.port}"
 
 
 class SystemConfigModel(BaseModel):
