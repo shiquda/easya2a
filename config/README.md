@@ -49,11 +49,25 @@ base_url: null  # 使用默认 https://api.openai.com/v1
 ```
 
 ### Azure OpenAI
+Azure OpenAI 需要使用专门的 `azure_openai` provider 类型，并且必须指定 `api_version`：
+
 ```yaml
-base_url: "https://your-resource.openai.azure.com"
-api_key: "${AZURE_OPENAI_KEY}"
-model: "your-deployment-name"  # Azure使用deployment名称
+llm_providers:
+  my-azure-gpt4:
+    provider: azure_openai           # 使用 azure_openai provider
+    model: "your-deployment-name"    # Azure部署名称（不是模型名称）
+    api_key: "${AZURE_OPENAI_KEY}"   # Azure OpenAI API密钥
+    base_url: "https://your-resource.openai.azure.com"  # Azure资源端点
+    api_version: "2025-04-01-preview"  # API版本（必需）
+    temperature: 0.7
+    max_tokens: 2000
 ```
+
+**重要**：
+- `provider` 必须设置为 `azure_openai`
+- `model` 是你在 Azure 中的部署名称，不是 OpenAI 的模型名称
+- `api_version` 是必需的，推荐使用 `2025-04-01-preview` 或更高版本
+- `base_url` 是你的 Azure OpenAI 资源端点
 
 ### 本地Ollama
 ```yaml

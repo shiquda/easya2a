@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 class LLMProvider(str, Enum):
     """支持的LLM提供商"""
     OPENAI = "openai"
+    AZURE_OPENAI = "azure_openai"
     ANTHROPIC = "anthropic"
     LOCAL = "local"  # Ollama等本地模型
 
@@ -61,6 +62,7 @@ class LLMConfig(BaseModel):
     model: str = Field(default="gpt-4")
     api_key: str | None = Field(default=None)
     base_url: str | None = Field(default=None)
+    api_version: str | None = Field(default=None)  # Azure OpenAI需要
     temperature: float = Field(default=0.7, ge=0.0, le=2.0)
     max_tokens: int | None = Field(default=None, gt=0)
     timeout: float = Field(default=60.0)
@@ -110,6 +112,26 @@ class LLMManager:
 
             self._client = AsyncOpenAI(**kwargs)
             logger.info(f"Initialized OpenAI client with model: {self.config.model}")
+
+        elif self.config.provider == LLMProvider.AZURE_OPENAI:
+            # Azure OpenAI 需要特殊配置
+            from openai import AsyncAzureOpenAI
+
+            if not self.config.base_url:
+                raise ValueError("Azure OpenAI requires base_url (azure_endpoint)")
+            if not self.config.api_version:
+                raise ValueError("Azure OpenAI requires api_version")
+
+            kwargs = {
+                "api_key": self.config.api_key,
+                "azure_endpoint": self.config.base_url,
+                "api_version": self.config.api_version,
+                "timeout": self.config.timeout,
+                "max_retries": self.config.max_retries,
+            }
+
+            self._client = AsyncAzureOpenAI(**kwargs)
+            logger.info(f"Initialized Azure OpenAI client with deployment: {self.config.model}")
 
         elif self.config.provider == LLMProvider.ANTHROPIC:
             # TODO: 实现Anthropic客户端

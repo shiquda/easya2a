@@ -53,6 +53,18 @@ llm_providers:
     timeout: 30.0
     max_retries: 3
 
+  # Azure OpenAI 配置示例
+  # azure-gpt4:
+  #   provider: azure_openai
+  #   model: "your-deployment-name"          # Azure部署名称（不是模型名称）
+  #   api_key: "${AZURE_OPENAI_KEY}"         # Azure OpenAI API密钥
+  #   base_url: "https://your-resource.openai.azure.com"  # Azure资源端点
+  #   api_version: "2025-04-01-preview"      # API版本（必需）
+  #   temperature: 0.7
+  #   max_tokens: 2000
+  #   timeout: 60.0
+  #   max_retries: 3
+
   # Anthropic Claude配置示例（需要实现Anthropic provider）
   # anthropic-claude:
   #   provider: anthropic
