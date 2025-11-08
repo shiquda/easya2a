@@ -28,6 +28,7 @@ class LLMConfigModel(BaseModel):
     model: str = Field(...)
     api_key: str | None = Field(default=None)
     base_url: str | None = Field(default=None)
+    api_version: str | None = Field(default=None)  # Azure OpenAI 需要
     temperature: float = Field(default=0.7, ge=0.0, le=2.0)
     max_tokens: int | None = Field(default=None, gt=0)
     timeout: float = Field(default=60.0)
