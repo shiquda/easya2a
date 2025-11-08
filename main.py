@@ -61,11 +61,14 @@ def build_agent_card(agent_config: AgentConfigModel) -> AgentCard:
     )
 
     # 添加provider信息（如果有）
-    if agent_config.provider:
-        provider_info = {"organization": agent_config.provider.organization}
-        # 只添加非None的字段
-        if agent_config.provider.url:
-            provider_info["url"] = agent_config.provider.url
+    # 注意：A2A AgentCard 要求 provider 必须包含 url 字段
+    # 如果配置中没有提供 url，我们就不添加 provider
+    if agent_config.provider and agent_config.provider.url:
+        provider_info = {
+            "organization": agent_config.provider.organization,
+            "url": agent_config.provider.url,
+        }
+        # 添加可选的 email 字段
         if agent_config.provider.email:
             provider_info["email"] = agent_config.provider.email
         card.provider = provider_info
