@@ -14,6 +14,7 @@ from contextlib import asynccontextmanager
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
+from mcp.client.streamable_http import streamablehttp_client
 from mcp.types import Tool, CallToolResult
 
 from core.config import MCPServerConfigModel, MCPTransport
@@ -58,10 +59,8 @@ class MCPClientManager:
 
         if self.config.transport == MCPTransport.STDIO:
             await self._initialize_stdio()
-        elif self.config.transport == MCPTransport.SSE:
-            raise NotImplementedError("SSE transport not yet implemented")
-        elif self.config.transport == MCPTransport.STREAMABLE_HTTP:
-            raise NotImplementedError("Streamable HTTP transport not yet implemented")
+        elif self.config.transport in (MCPTransport.SSE, MCPTransport.STREAMABLE_HTTP):
+            await self._initialize_streamable_http()
         else:
             raise ValueError(f"Unknown transport type: {self.config.transport}")
 
@@ -99,6 +98,32 @@ class MCPClientManager:
         await self._session.initialize()
 
         logger.debug(f"MCP client '{self.name}' stdio connection established")
+
+    async def _initialize_streamable_http(self):
+        """初始化 Streamable HTTP/SSE 传输连接"""
+        if not self.config.url:
+            raise ValueError(f"MCP server '{self.name}' requires 'url' for {self.config.transport} transport")
+
+        logger.info(
+            f"MCP client '{self.name}' connecting via {self.config.transport} "
+            f"(url: {self.config.url})"
+        )
+
+        # 建立连接
+        self._stdio_context = streamablehttp_client(self.config.url)
+        read_stream, write_stream, _ = await self._stdio_context.__aenter__()
+
+        self._read_stream = read_stream
+        self._write_stream = write_stream
+
+        # 创建会话
+        self._session = ClientSession(read_stream, write_stream)
+
+        # 初始化会话
+        await self._session.__aenter__()
+        await self._session.initialize()
+
+        logger.debug(f"MCP client '{self.name}' streamable HTTP connection established")
 
     async def list_tools(self) -> list[Tool]:
         """

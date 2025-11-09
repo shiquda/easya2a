@@ -16,11 +16,33 @@ uv sync
 
 ### 2. 配置 MCP 服务器
 
-在 `config/agents.yaml` 中添加 MCP 服务器配置：
+在 `config/agents.yaml` 中添加 MCP 服务器配置。
+
+#### 方式一：远程 SSE 服务器（推荐）
+
+无需安装，直接连接远程服务：
 
 ```yaml
 mcp_servers:
-  deepwiki:
+  deepwiki-remote:
+    transport: sse  # 或 streamable_http
+    url: "https://mcp.deepwiki.com/sse"
+    description: "GitHub repository exploration (remote)"
+```
+
+**优势**:
+- ✅ 无需安装 npm 包
+- ✅ 无需配置 API Key
+- ✅ 开箱即用
+- ✅ 适合生产环境
+
+#### 方式二：本地 stdio 服务器
+
+需要安装 npm 包：
+
+```yaml
+mcp_servers:
+  deepwiki-local:
     transport: stdio
     command: npx
     args:
@@ -28,8 +50,13 @@ mcp_servers:
       - "@deepwiki/mcp"
     env:
       DEEPWIKI_API_KEY: "${DEEPWIKI_API_KEY}"
-    description: "GitHub repository exploration"
+    description: "GitHub repository exploration (local)"
 ```
+
+**需要**:
+- Node.js 和 npm
+- 相应的 MCP 服务器包
+- API Key（如需要）
 
 ### 3. 配置 MCP Agent
 
@@ -46,7 +73,7 @@ agents:
     extra:
       mcp_config:
         servers:
-          - deepwiki
+          - deepwiki-remote  # 使用远程服务器
         max_tool_calls: 5
 ```
 
@@ -56,8 +83,8 @@ agents:
 # OpenAI API Key（用于LLM推理）
 export OPENAI_API_KEY=sk-...
 
-# MCP服务器API Key（如果需要）
-export DEEPWIKI_API_KEY=your-key-here
+# 如果使用本地 MCP 服务器，可能需要额外的 API Key
+# export DEEPWIKI_API_KEY=your-key-here
 ```
 
 ### 5. 启动服务器
@@ -85,15 +112,25 @@ curl -X POST http://localhost:9010/api/v1/agent/invoke \
 
 ## MCP 服务器
 
+### 传输协议
+
+MCP 支持三种传输协议：
+
+| 协议 | 适用场景 | 配置 | 优缺点 |
+|------|---------|------|--------|
+| **SSE** | 远程 HTTP 服务 | 只需 `url` | ✅ 无需安装<br>✅ 跨平台<br>✅ 适合生产 |
+| **Streamable HTTP** | 远程 HTTP 服务 | 只需 `url` | 同 SSE |
+| **stdio** | 本地进程通信 | 需 `command`, `args` | ✅ 低延迟<br>❌ 需安装<br>❌ 平台相关 |
+
 ### 官方支持的 MCP 服务器
 
-| 服务器 | NPM 包 | 功能 | 需要 API Key |
-|--------|--------|------|--------------|
-| **DeepWiki** | `@deepwiki/mcp` | GitHub 仓库探索 | 是 |
-| **Brave Search** | `@modelcontextprotocol/server-brave-search` | Web 搜索 | 是 |
-| **SQLite** | `@modelcontextprotocol/server-sqlite` | 数据库访问 | 否 |
-| **Filesystem** | `@modelcontextprotocol/server-filesystem` | 文件系统访问 | 否 |
-| **GitHub** | `@modelcontextprotocol/server-github` | GitHub API | 是 |
+| 服务器 | 远程 URL | 本地 NPM 包 | 功能 | 需要 API Key |
+|--------|----------|-------------|------|--------------|
+| **DeepWiki** | `https://mcp.deepwiki.com/sse` | `@deepwiki/mcp` | GitHub 仓库探索 | 远程：否<br>本地：是 |
+| **Brave Search** | - | `@modelcontextprotocol/server-brave-search` | Web 搜索 | 是 |
+| **SQLite** | - | `@modelcontextprotocol/server-sqlite` | 数据库访问 | 否 |
+| **Filesystem** | - | `@modelcontextprotocol/server-filesystem` | 文件系统访问 | 否 |
+| **GitHub** | - | `@modelcontextprotocol/server-github` | GitHub API | 是 |
 
 ### 安装 MCP 服务器
 

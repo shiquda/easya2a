@@ -68,10 +68,11 @@ class MCPTransport(str, Enum):
 class MCPServerConfigModel(BaseModel):
     """MCP服务器配置模型"""
     transport: MCPTransport = Field(default=MCPTransport.STDIO)
-    command: str = Field(...)  # 启动命令
+    command: str | None = Field(default=None)  # stdio传输时必需
     args: list[str] = Field(default_factory=list)
     env: dict[str, str] = Field(default_factory=dict)  # 环境变量
     cwd: str | None = Field(default=None)  # 工作目录
+    url: str | None = Field(default=None)  # SSE/HTTP传输时必需
     description: str | None = Field(default=None)
 
     @field_validator("env", mode="before")
@@ -88,6 +89,15 @@ class MCPServerConfigModel(BaseModel):
             else:
                 result[key] = value
         return result
+
+    def model_post_init(self, __context):
+        """验证配置完整性"""
+        if self.transport == MCPTransport.STDIO:
+            if not self.command:
+                raise ValueError("stdio transport requires 'command' field")
+        elif self.transport in (MCPTransport.SSE, MCPTransport.STREAMABLE_HTTP):
+            if not self.url:
+                raise ValueError(f"{self.transport} transport requires 'url' field")
 
 
 class MCPAgentConfigModel(BaseModel):

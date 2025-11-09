@@ -87,18 +87,32 @@ llm_providers:
 # ===================================
 # MCP (Model Context Protocol) 服务器提供外部工具能力
 # MCP Agent 可以引用这些服务器来访问各种工具
+#
+# 支持三种传输协议：
+# 1. stdio - 本地进程通信（适用于npm包）
+# 2. sse - 服务器发送事件（适用于远程HTTP服务）
+# 3. streamable_http - 流式HTTP（适用于远程HTTP服务）
+
 mcp_servers:
-  # DeepWiki - GitHub仓库探索工具
+  # 远程 DeepWiki SSE 服务器 - 推荐！
+  # 无需安装，直接连接远程服务
+  deepwiki-remote:
+    transport: sse  # 或 streamable_http
+    url: "https://mcp.deepwiki.com/sse"
+    description: "GitHub repository exploration (remote)"
+    # 注意：远程服务器不需要 command 和 args 字段
+
+  # 本地 DeepWiki - 需要安装 npm 包
   # 需要安装: npm install -g @deepwiki/mcp
-  deepwiki:
-    transport: stdio  # 传输方式: stdio, sse, streamable_http
-    command: npx      # 启动命令
-    args:
-      - "-y"
-      - "@deepwiki/mcp"
-    env:
-      DEEPWIKI_API_KEY: "${DEEPWIKI_API_KEY}"  # 环境变量
-    description: "GitHub repository exploration and documentation"
+  # deepwiki-local:
+  #   transport: stdio  # 传输方式: stdio, sse, streamable_http
+  #   command: npx      # 启动命令
+  #   args:
+  #     - "-y"
+  #     - "@deepwiki/mcp"
+  #   env:
+  #     DEEPWIKI_API_KEY: "${DEEPWIKI_API_KEY}"  # 环境变量
+  #   description: "GitHub repository exploration (local)"
 
   # Brave Search - Web搜索工具
   # 需要安装: npm install -g @modelcontextprotocol/server-brave-search
@@ -256,10 +270,10 @@ agents:
   # ===================================
   # Research Assistant - 具有GitHub探索和Web搜索能力的研究助手（已注释）
   # 需要：
-  # 1. 配置 DEEPWIKI_API_KEY 和/或 BRAVE_API_KEY 环境变量
-  # 2. 安装相应的MCP服务器（见上面mcp_servers配置）
+  # 1. 配置 OPENAI_API_KEY 环境变量（用于LLM推理）
+  # 2. 如使用远程服务，无需额外配置；如使用本地服务，需安装相应MCP服务器
   # - name: research-assistant
-  #   description: "AI research assistant with GitHub and web search capabilities"
+  #   description: "AI research assistant with GitHub exploration capabilities"
   #   type: mcp                      # Agent类型：mcp
   #   host: 0.0.0.0
   #   port: 9010
@@ -270,12 +284,12 @@ agents:
   #   extra:
   #     mcp_config:
   #       servers:                   # 引用的MCP服务器列表
-  #         - deepwiki               # GitHub仓库探索
+  #         - deepwiki-remote        # 使用远程DeepWiki服务（推荐）
+  #         # - deepwiki-local       # 或使用本地服务（需要npm安装）
   #         # - brave-search         # Web搜索（需要取消注释brave-search配置）
   #       system_prompt: |           # 自定义系统提示词（可选）
   #         You are a research assistant with access to powerful tools:
   #         - GitHub repository exploration (deepwiki)
-  #         - Web search (brave-search)
   #
   #         When users ask questions:
   #         1. Determine if you need to use tools to answer
