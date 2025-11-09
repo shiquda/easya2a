@@ -5,6 +5,7 @@ LLM Agent实现
 """
 
 import logging
+import traceback
 from typing import Any
 
 from agents.base import BaseAgent
@@ -67,9 +68,17 @@ class LLMAgent(BaseAgent):
         # 准备消息列表
         messages = self._prepare_messages(input_data)
 
+        logger.debug(
+            f"LLM Agent '{self.name}' preparing to invoke with:\n"
+            f"  Messages count: {len(messages)}\n"
+            f"  System prompt: {self.system_prompt[:50]}..."
+        )
+
         try:
             # 调用LLM
+            logger.debug(f"LLM Agent '{self.name}' calling LLM manager...")
             response = await self.llm_manager.chat(messages)
+            logger.debug(f"LLM Agent '{self.name}' received response from LLM manager")
 
             logger.info(
                 f"LLM Agent '{self.name}' processed message "
@@ -79,7 +88,13 @@ class LLMAgent(BaseAgent):
             return response.content
 
         except Exception as e:
-            logger.error(f"LLM Agent '{self.name}' error: {e}")
+            logger.error(
+                f"LLM Agent '{self.name}' error:\n"
+                f"  Error: {e}\n"
+                f"  Error Type: {type(e).__name__}\n"
+                f"  Messages count: {len(messages)}\n"
+                f"  Traceback:\n{traceback.format_exc()}"
+            )
             return f"Sorry, I encountered an error: {str(e)}"
 
     def _prepare_messages(self, input_data: Any) -> list[dict[str, str]]:
@@ -129,10 +144,19 @@ class StreamingLLMAgent(LLMAgent):
         """
         messages = self._prepare_messages(input_data)
 
+        logger.debug(f"Streaming LLM Agent '{self.name}' preparing to invoke stream")
+
         try:
             async for chunk in self.llm_manager.chat_stream(messages):
                 yield chunk
 
+            logger.debug(f"Streaming LLM Agent '{self.name}' completed stream")
+
         except Exception as e:
-            logger.error(f"LLM Agent '{self.name}' streaming error: {e}")
+            logger.error(
+                f"LLM Agent '{self.name}' streaming error:\n"
+                f"  Error: {e}\n"
+                f"  Error Type: {type(e).__name__}\n"
+                f"  Traceback:\n{traceback.format_exc()}"
+            )
             yield f"Sorry, I encountered an error: {str(e)}"

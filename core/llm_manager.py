@@ -11,10 +11,12 @@ LLM Manager - 统一的模型调用管理模块
 
 import asyncio
 import logging
+import traceback
 from typing import Any, AsyncIterator, Literal
 from dataclasses import dataclass, field
 from enum import Enum
 
+import httpx
 import openai
 from openai import AsyncOpenAI
 from pydantic import BaseModel, Field
@@ -67,6 +69,7 @@ class LLMConfig(BaseModel):
     max_tokens: int | None = Field(default=None, gt=0)
     timeout: float = Field(default=60.0)
     max_retries: int = Field(default=3)
+    verify_ssl: bool = Field(default=True)  # SSL证书验证，默认启用
 
     class Config:
         use_enum_values = True
@@ -110,8 +113,28 @@ class LLMManager:
             if self.config.base_url:
                 kwargs["base_url"] = self.config.base_url
 
+            # 如果禁用SSL验证，创建自定义httpx client
+            if not self.config.verify_ssl:
+                logger.warning(
+                    "SSL certificate verification is DISABLED. "
+                    "This is insecure and should only be used in development/testing!"
+                )
+                http_client = httpx.AsyncClient(verify=False)
+                kwargs["http_client"] = http_client
+
+            # Log detailed configuration (without sensitive info)
+            logger.info(
+                f"Initializing OpenAI client:\n"
+                f"  Model: {self.config.model}\n"
+                f"  Base URL: {self.config.base_url or 'default (https://api.openai.com/v1)'}\n"
+                f"  Timeout: {self.config.timeout}s\n"
+                f"  Max Retries: {self.config.max_retries}\n"
+                f"  SSL Verification: {'enabled' if self.config.verify_ssl else 'DISABLED'}\n"
+                f"  API Key: {'configured' if self.config.api_key else 'MISSING'}"
+            )
+
             self._client = AsyncOpenAI(**kwargs)
-            logger.info(f"Initialized OpenAI client with model: {self.config.model}")
+            logger.info(f"Successfully initialized OpenAI client with model: {self.config.model}")
 
         elif self.config.provider == LLMProvider.AZURE_OPENAI:
             # Azure OpenAI 需要特殊配置
@@ -129,6 +152,15 @@ class LLMManager:
                 "timeout": self.config.timeout,
                 "max_retries": self.config.max_retries,
             }
+
+            # 如果禁用SSL验证，创建自定义httpx client
+            if not self.config.verify_ssl:
+                logger.warning(
+                    "SSL certificate verification is DISABLED for Azure OpenAI. "
+                    "This is insecure and should only be used in development/testing!"
+                )
+                http_client = httpx.AsyncClient(verify=False)
+                kwargs["http_client"] = http_client
 
             self._client = AsyncAzureOpenAI(**kwargs)
             logger.info(f"Initialized Azure OpenAI client with deployment: {self.config.model}")
@@ -169,9 +201,21 @@ class LLMManager:
         if self.config.max_tokens:
             params["max_tokens"] = kwargs.get("max_tokens", self.config.max_tokens)
 
+        # Log request details
+        logger.debug(
+            f"Sending chat request:\n"
+            f"  Model: {params['model']}\n"
+            f"  Temperature: {params['temperature']}\n"
+            f"  Max tokens: {params.get('max_tokens', 'unlimited')}\n"
+            f"  Messages count: {len(messages)}\n"
+            f"  Base URL: {self.config.base_url or 'default'}"
+        )
+
         try:
             # 调用OpenAI API
+            logger.debug("Calling OpenAI chat.completions.create...")
             response = await self._client.chat.completions.create(**params)
+            logger.debug("Successfully received response from OpenAI")
 
             # 提取响应
             choice = response.choices[0]
@@ -198,11 +242,49 @@ class LLMManager:
                 raw_response=response,
             )
 
+        except openai.APIConnectionError as e:
+            logger.error(
+                f"Connection error while calling OpenAI API:\n"
+                f"  Error: {e}\n"
+                f"  Base URL: {self.config.base_url or 'default (https://api.openai.com/v1)'}\n"
+                f"  Timeout: {self.config.timeout}s\n"
+                f"  Max Retries: {self.config.max_retries}\n"
+                f"  Error Type: {type(e).__name__}\n"
+                f"  Traceback:\n{traceback.format_exc()}"
+            )
+            raise
+        except openai.APITimeoutError as e:
+            logger.error(
+                f"Timeout error while calling OpenAI API:\n"
+                f"  Error: {e}\n"
+                f"  Timeout setting: {self.config.timeout}s\n"
+                f"  Traceback:\n{traceback.format_exc()}"
+            )
+            raise
+        except openai.RateLimitError as e:
+            logger.error(
+                f"Rate limit error:\n"
+                f"  Error: {e}\n"
+                f"  Model: {params['model']}\n"
+                f"  Traceback:\n{traceback.format_exc()}"
+            )
+            raise
         except openai.APIError as e:
-            logger.error(f"OpenAI API error: {e}")
+            logger.error(
+                f"OpenAI API error:\n"
+                f"  Error: {e}\n"
+                f"  Status code: {getattr(e, 'status_code', 'N/A')}\n"
+                f"  Response: {getattr(e, 'response', 'N/A')}\n"
+                f"  Traceback:\n{traceback.format_exc()}"
+            )
             raise
         except Exception as e:
-            logger.error(f"Unexpected error in LLM call: {e}")
+            logger.error(
+                f"Unexpected error in LLM call:\n"
+                f"  Error: {e}\n"
+                f"  Error Type: {type(e).__name__}\n"
+                f"  Traceback:\n{traceback.format_exc()}"
+            )
             raise
 
     async def chat_stream(
@@ -233,18 +315,48 @@ class LLMManager:
         if self.config.max_tokens:
             params["max_tokens"] = kwargs.get("max_tokens", self.config.max_tokens)
 
+        logger.debug(
+            f"Sending streaming chat request:\n"
+            f"  Model: {params['model']}\n"
+            f"  Temperature: {params['temperature']}\n"
+            f"  Max tokens: {params.get('max_tokens', 'unlimited')}\n"
+            f"  Messages count: {len(messages)}"
+        )
+
         try:
+            logger.debug("Calling OpenAI chat.completions.create (streaming)...")
             stream = await self._client.chat.completions.create(**params)
+            logger.debug("Started receiving streaming response from OpenAI")
 
             async for chunk in stream:
                 if chunk.choices[0].delta.content:
                     yield chunk.choices[0].delta.content
 
+            logger.debug("Completed streaming response")
+
+        except openai.APIConnectionError as e:
+            logger.error(
+                f"Connection error in stream:\n"
+                f"  Error: {e}\n"
+                f"  Base URL: {self.config.base_url or 'default (https://api.openai.com/v1)'}\n"
+                f"  Traceback:\n{traceback.format_exc()}"
+            )
+            raise
         except openai.APIError as e:
-            logger.error(f"OpenAI API error in stream: {e}")
+            logger.error(
+                f"OpenAI API error in stream:\n"
+                f"  Error: {e}\n"
+                f"  Status code: {getattr(e, 'status_code', 'N/A')}\n"
+                f"  Traceback:\n{traceback.format_exc()}"
+            )
             raise
         except Exception as e:
-            logger.error(f"Unexpected error in LLM stream: {e}")
+            logger.error(
+                f"Unexpected error in LLM stream:\n"
+                f"  Error: {e}\n"
+                f"  Error Type: {type(e).__name__}\n"
+                f"  Traceback:\n{traceback.format_exc()}"
+            )
             raise
 
     def get_total_usage(self) -> LLMUsage:

@@ -14,13 +14,15 @@ from a2a.server.apps.jsonrpc.fastapi_app import A2AFastAPIApplication
 from a2a.server.request_handlers.default_request_handler import DefaultRequestHandler
 from a2a.server.tasks import InMemoryTaskStore
 
-from core.config import AgentConfigModel, initialize_config, get_config_manager
+from core.config import AgentConfigModel, MCPAgentConfigModel, initialize_config, get_config_manager
 from core.server import MultiAgentServer
-from core.llm_manager import LLMManager, LLMConfig, register_llm_manager
+from core.llm_manager import LLMManager, LLMConfig, register_llm_manager, get_llm_manager
+from core.mcp_manager import get_mcp_pool
 
 # Agent implementations
 from agents.echo import EchoAgentExecutor
 from agents.llm import create_llm_executor
+from agents.mcp import MCPAgent, MCPAgentExecutor
 
 
 logger = logging.getLogger(__name__)
@@ -118,6 +120,37 @@ def build_agent_executor(agent_config: AgentConfigModel):
             system_prompt=system_prompt,
         )
 
+    elif agent_config.type == "mcp":
+        # MCP Agent
+        if not agent_config.llm_provider:
+            raise ValueError(
+                f"MCP agent '{agent_config.name}' requires llm_provider field"
+            )
+
+        # 从全局配置获取LLM provider配置
+        config_manager = get_config_manager()
+        llm_config_model = config_manager.get_llm_provider(agent_config.llm_provider)
+
+        # 转换为LLMConfig并注册LLM管理器（如果还没注册）
+        llm_manager_name = f"mcp_{agent_config.name}"
+        llm_config = LLMConfig(**llm_config_model.model_dump())
+        llm_manager = register_llm_manager(llm_manager_name, llm_config)
+
+        # 解析MCP配置
+        mcp_config_data = agent_config.extra.get("mcp_config", {})
+        mcp_config = MCPAgentConfigModel(**mcp_config_data)
+
+        # 创建MCP Agent
+        agent = MCPAgent(
+            name=agent_config.name,
+            llm_manager=llm_manager,
+            mcp_pool=get_mcp_pool(),
+            mcp_config=mcp_config,
+        )
+
+        # 创建executor
+        return MCPAgentExecutor(agent)
+
     else:
         raise ValueError(f"Unsupported agent type: {agent_config.type}")
 
@@ -140,6 +173,11 @@ def build_fastapi_app(agent_config: AgentConfigModel) -> FastAPI:
     # 构建Agent Executor
     agent_executor = build_agent_executor(agent_config)
 
+    # 如果是MCP Agent，需要初始化（异步操作需要在启动时执行）
+    # 注意：这里不能直接await，需要在app启动时初始化
+    if agent_config.type == "mcp":
+        logger.info(f"MCP Agent '{agent_config.name}' will be initialized on startup")
+
     # 创建任务存储
     task_store = InMemoryTaskStore()
 
@@ -157,6 +195,14 @@ def build_fastapi_app(agent_config: AgentConfigModel) -> FastAPI:
 
     # 构建应用
     app = app_builder.build()
+
+    # 添加启动事件处理器（用于初始化MCP Agent）
+    if agent_config.type == "mcp":
+        @app.on_event("startup")
+        async def initialize_mcp_agent():
+            logger.info(f"Initializing MCP Agent '{agent_config.name}'...")
+            await agent_executor.agent.initialize()
+            logger.info(f"MCP Agent '{agent_config.name}' initialized")
 
     logger.info(
         f"Agent '{agent_config.name}' ({agent_config.type}) "
@@ -176,6 +222,24 @@ async def main():
     logger.info("=" * 60)
 
     try:
+        # 初始化配置
+        config_manager = initialize_config(config_path)
+
+        # 初始化MCP管理器池
+        mcp_pool = get_mcp_pool()
+        mcp_servers = config_manager.get_all_mcp_servers()
+
+        if mcp_servers:
+            logger.info(f"Registering {len(mcp_servers)} MCP servers...")
+            for name, mcp_config in mcp_servers.items():
+                mcp_pool.register_server(name, mcp_config)
+
+            logger.info("Initializing MCP servers...")
+            await mcp_pool.initialize_all()
+            logger.info("MCP servers initialized")
+        else:
+            logger.info("No MCP servers configured")
+
         # 创建并启动服务器
         server = MultiAgentServer(
             config_path=str(config_path),
@@ -183,7 +247,14 @@ async def main():
         )
 
         # 运行服务器（阻塞直到收到关闭信号）
-        await server.run()
+        try:
+            await server.run()
+        finally:
+            # 清理MCP连接
+            if mcp_servers:
+                logger.info("Cleaning up MCP servers...")
+                await mcp_pool.cleanup_all()
+                logger.info("MCP servers cleaned up")
 
     except FileNotFoundError as e:
         logger.error(f"Configuration file not found: {e}")

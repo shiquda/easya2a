@@ -83,6 +83,56 @@ llm_providers:
   #   max_tokens: 2048
 
 # ===================================
+# 全局MCP服务器配置
+# ===================================
+# MCP (Model Context Protocol) 服务器提供外部工具能力
+# MCP Agent 可以引用这些服务器来访问各种工具
+mcp_servers:
+  # DeepWiki - GitHub仓库探索工具
+  # 需要安装: npm install -g @deepwiki/mcp
+  deepwiki:
+    transport: stdio  # 传输方式: stdio, sse, streamable_http
+    command: npx      # 启动命令
+    args:
+      - "-y"
+      - "@deepwiki/mcp"
+    env:
+      DEEPWIKI_API_KEY: "${DEEPWIKI_API_KEY}"  # 环境变量
+    description: "GitHub repository exploration and documentation"
+
+  # Brave Search - Web搜索工具
+  # 需要安装: npm install -g @modelcontextprotocol/server-brave-search
+  # brave-search:
+  #   transport: stdio
+  #   command: npx
+  #   args:
+  #     - "-y"
+  #     - "@modelcontextprotocol/server-brave-search"
+  #   env:
+  #     BRAVE_API_KEY: "${BRAVE_API_KEY}"
+  #   description: "Web search using Brave Search API"
+
+  # SQLite Database - 数据库访问工具
+  # sqlite-db:
+  #   transport: stdio
+  #   command: npx
+  #   args:
+  #     - "-y"
+  #     - "@modelcontextprotocol/server-sqlite"
+  #     - "/path/to/database.db"  # 数据库路径
+  #   description: "SQLite database access and querying"
+
+  # Filesystem - 文件系统访问（只读）
+  # filesystem:
+  #   transport: stdio
+  #   command: npx
+  #   args:
+  #     - "-y"
+  #     - "@modelcontextprotocol/server-filesystem"
+  #     - "/path/to/allowed/directory"  # 允许访问的目录
+  #   description: "Read-only filesystem access"
+
+# ===================================
 # Agent配置列表
 # ===================================
 agents:
@@ -201,11 +251,71 @@ agents:
   #   extra:
   #     system_prompt: "You are a helpful assistant. Provide quick and concise answers."
 
+  # ===================================
+  # MCP Agent 示例
+  # ===================================
+  # Research Assistant - 具有GitHub探索和Web搜索能力的研究助手（已注释）
+  # 需要：
+  # 1. 配置 DEEPWIKI_API_KEY 和/或 BRAVE_API_KEY 环境变量
+  # 2. 安装相应的MCP服务器（见上面mcp_servers配置）
+  # - name: research-assistant
+  #   description: "AI research assistant with GitHub and web search capabilities"
+  #   type: mcp                      # Agent类型：mcp
+  #   host: 0.0.0.0
+  #   port: 9010
+  #   llm_provider: openai-gpt4      # 用于工具调用决策的LLM
+  #   provider:
+  #     organization: "Research Tools"
+  #     url: "https://research.example.com"
+  #   extra:
+  #     mcp_config:
+  #       servers:                   # 引用的MCP服务器列表
+  #         - deepwiki               # GitHub仓库探索
+  #         # - brave-search         # Web搜索（需要取消注释brave-search配置）
+  #       system_prompt: |           # 自定义系统提示词（可选）
+  #         You are a research assistant with access to powerful tools:
+  #         - GitHub repository exploration (deepwiki)
+  #         - Web search (brave-search)
+  #
+  #         When users ask questions:
+  #         1. Determine if you need to use tools to answer
+  #         2. Use the appropriate tools to gather information
+  #         3. Synthesize the information into a clear, helpful answer
+  #
+  #         Always cite your sources when using tool results.
+  #       max_tool_calls: 5          # 单次对话最大工具调用次数
+  #       tool_choice: auto          # auto, required, none
+
 # ===================================
 # 添加新Agent的步骤
 # ===================================
 # 1. 如果需要新的LLM配置，先在 llm_providers 中添加
-# 2. 在 agents 列表中添加新的Agent配置
-# 3. 确保端口号唯一
-# 4. 如果是LLM类型，指定 llm_provider
-# 5. 在 extra.system_prompt 中定义Agent的行为
+# 2. 如果是MCP Agent，先在 mcp_servers 中添加需要的MCP服务器
+# 3. 在 agents 列表中添加新的Agent配置
+# 4. 确保端口号唯一
+# 5. 如果是LLM或MCP类型，指定 llm_provider
+# 6. 在 extra.system_prompt 中定义Agent的行为
+# 7. 对于MCP Agent，在 extra.mcp_config 中配置工具服务器
+
+# ===================================
+# MCP Agent 配置说明
+# ===================================
+# MCP (Model Context Protocol) Agent 可以调用外部工具服务器
+#
+# 必需字段：
+# - type: mcp
+# - llm_provider: 引用LLM provider（用于工具调用决策）
+# - extra.mcp_config.servers: 引用的MCP服务器列表
+#
+# 可选字段：
+# - extra.mcp_config.system_prompt: 自定义系统提示词
+# - extra.mcp_config.max_tool_calls: 最大工具调用次数（默认5）
+# - extra.mcp_config.tool_choice: 工具调用策略（auto/required/none，默认auto）
+#
+# 示例MCP服务器：
+# - @deepwiki/mcp: GitHub仓库探索
+# - @modelcontextprotocol/server-brave-search: Web搜索
+# - @modelcontextprotocol/server-sqlite: SQLite数据库
+# - @modelcontextprotocol/server-filesystem: 文件系统访问
+#
+# 更多MCP服务器: https://github.com/modelcontextprotocol/servers

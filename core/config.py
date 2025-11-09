@@ -11,7 +11,8 @@
 import os
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
+from enum import Enum
 
 import yaml
 from pydantic import BaseModel, Field, field_validator
@@ -33,6 +34,7 @@ class LLMConfigModel(BaseModel):
     max_tokens: int | None = Field(default=None, gt=0)
     timeout: float = Field(default=60.0)
     max_retries: int = Field(default=3)
+    verify_ssl: bool = Field(default=True)  # SSL证书验证，默认启用
 
     @field_validator("api_key", "base_url", mode="before")
     @classmethod
@@ -54,6 +56,46 @@ class ProviderInfo(BaseModel):
     organization: str = Field(...)
     url: str | None = Field(default=None)
     email: str | None = Field(default=None)
+
+
+class MCPTransport(str, Enum):
+    """MCP传输协议类型"""
+    STDIO = "stdio"
+    SSE = "sse"
+    STREAMABLE_HTTP = "streamable_http"
+
+
+class MCPServerConfigModel(BaseModel):
+    """MCP服务器配置模型"""
+    transport: MCPTransport = Field(default=MCPTransport.STDIO)
+    command: str = Field(...)  # 启动命令
+    args: list[str] = Field(default_factory=list)
+    env: dict[str, str] = Field(default_factory=dict)  # 环境变量
+    cwd: str | None = Field(default=None)  # 工作目录
+    description: str | None = Field(default=None)
+
+    @field_validator("env", mode="before")
+    @classmethod
+    def expand_env_vars_dict(cls, v: dict[str, str]) -> dict[str, str]:
+        """展开环境变量"""
+        if v is None:
+            return {}
+        result = {}
+        for key, value in v.items():
+            if isinstance(value, str) and value.startswith("${") and value.endswith("}"):
+                var_name = value[2:-1]
+                result[key] = os.getenv(var_name, "")
+            else:
+                result[key] = value
+        return result
+
+
+class MCPAgentConfigModel(BaseModel):
+    """MCP Agent 专用配置"""
+    servers: list[str] = Field(default_factory=list)  # 引用的 MCP 服务器名称列表
+    system_prompt: str | None = Field(default=None)
+    tool_choice: Literal["auto", "required", "none"] = Field(default="auto")
+    max_tool_calls: int = Field(default=5, gt=0, le=20)
 
 
 class AgentConfigModel(BaseModel):
@@ -94,6 +136,9 @@ class AppConfigModel(BaseModel):
 
     # 全局LLM Providers配置
     llm_providers: dict[str, LLMConfigModel] = Field(default_factory=dict)
+
+    # 全局MCP服务器配置
+    mcp_servers: dict[str, MCPServerConfigModel] = Field(default_factory=dict)
 
     # Agent配置列表
     agents: list[AgentConfigModel] = Field(...)
@@ -249,6 +294,27 @@ class ConfigManager:
     def get_all_llm_providers(self) -> dict[str, LLMConfigModel]:
         """获取所有LLM Provider配置"""
         return self._config.llm_providers
+
+    def get_mcp_server(self, name: str) -> MCPServerConfigModel:
+        """
+        获取MCP服务器配置
+
+        Args:
+            name: MCP服务器名称
+
+        Returns:
+            MCPServerConfigModel
+
+        Raises:
+            KeyError: MCP服务器不存在
+        """
+        if name not in self._config.mcp_servers:
+            raise KeyError(f"MCP server '{name}' not found in configuration")
+        return self._config.mcp_servers[name]
+
+    def get_all_mcp_servers(self) -> dict[str, MCPServerConfigModel]:
+        """获取所有MCP服务器配置"""
+        return self._config.mcp_servers
 
 
 # 全局配置管理器实例
