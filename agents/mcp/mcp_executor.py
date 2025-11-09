@@ -96,13 +96,17 @@ class MCPAgentExecutor(BaseAgentExecutor):
                 response = await self.agent.llm_manager.chat(messages)
                 assistant_message = response.content
 
-                logger.debug(
+                logger.info(
                     f"LLM response (iteration {iteration + 1}): "
-                    f"{assistant_message[:200]}..."
+                    f"{assistant_message[:500]}{'...' if len(assistant_message) > 500 else ''}"
                 )
 
                 # 检查是否需要调用工具
                 tool_calls = self.agent._parse_tool_calls(assistant_message)
+
+                logger.info(
+                    f"Parsed {len(tool_calls)} tool call(s) from LLM response"
+                )
 
                 if not tool_calls:
                     # 没有工具调用，这是最终答案

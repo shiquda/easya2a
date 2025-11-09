@@ -383,10 +383,9 @@ If you don't need to use any tools to answer the question, respond directly with
         """
         从LLM响应中解析工具调用
 
-        期望格式：
-        ```json
-        {"tool": "server:tool_name", "arguments": {...}}
-        ```
+        支持两种格式：
+        1. 代码块格式：```json\n{"tool": "...", "arguments": {...}}\n```
+        2. 裸JSON格式：{"tool": "...", "arguments": {...}}
 
         Args:
             message: LLM响应消息
@@ -396,17 +395,53 @@ If you don't need to use any tools to answer the question, respond directly with
         """
         tool_calls = []
 
-        # 查找所有JSON代码块
+        # 方法1：查找代码块中的JSON
         json_blocks = re.findall(r'```json\s*(\{.*?\})\s*```', message, re.DOTALL)
+        logger.debug(f"Found {len(json_blocks)} JSON code blocks")
 
-        for block in json_blocks:
+        for i, block in enumerate(json_blocks):
             try:
                 parsed = json.loads(block)
                 if "tool" in parsed and "arguments" in parsed:
                     tool_calls.append(parsed)
-                    logger.debug(f"Parsed tool call: {parsed['tool']}")
+                    logger.info(f"Parsed tool call from code block: {parsed['tool']}")
+                else:
+                    logger.warning(f"JSON code block missing required fields: {list(parsed.keys())}")
             except json.JSONDecodeError as e:
-                logger.warning(f"Failed to parse JSON block: {block[:100]}... Error: {e}")
+                logger.warning(f"Failed to parse JSON code block: {e}")
+
+        # 方法2：如果没有代码块，尝试解析裸JSON
+        if not tool_calls:
+            message_stripped = message.strip()
+
+            # 尝试整个消息作为JSON
+            if message_stripped.startswith('{'):
+                # 找到完整的JSON对象（匹配括号）
+                depth = 0
+                end_pos = 0
+                for i, char in enumerate(message_stripped):
+                    if char == '{':
+                        depth += 1
+                    elif char == '}':
+                        depth -= 1
+                        if depth == 0:
+                            end_pos = i + 1
+                            break
+
+                if end_pos > 0:
+                    json_str = message_stripped[:end_pos]
+                    try:
+                        parsed = json.loads(json_str)
+                        if "tool" in parsed and "arguments" in parsed:
+                            tool_calls.append(parsed)
+                            logger.info(f"Parsed tool call from raw JSON: {parsed['tool']}")
+                        else:
+                            logger.debug(f"Raw JSON missing required fields: {list(parsed.keys())}")
+                    except json.JSONDecodeError as e:
+                        logger.warning(f"Failed to parse raw JSON: {e}")
+
+        if not tool_calls:
+            logger.debug(f"No tool calls found. Message preview: {message[:200]}...")
 
         return tool_calls
 
@@ -423,6 +458,8 @@ If you don't need to use any tools to answer the question, respond directly with
         tool_key = tool_call["tool"]
         arguments = tool_call.get("arguments", {})
 
+        logger.info(f"Executing tool call: tool='{tool_key}', arguments={arguments}")
+
         if tool_key not in self._tools_cache:
             logger.warning(f"Tool '{tool_key}' not found in cache")
             return {
@@ -434,13 +471,19 @@ If you don't need to use any tools to answer the question, respond directly with
         server_name = tool_info["server"]
         tool_name = tool_info["tool"].name
 
+        logger.debug(f"Tool '{tool_key}' -> server='{server_name}', tool_name='{tool_name}'")
+
         try:
             client = self.mcp_pool.get_client(server_name)
+            logger.debug(f"Got MCP client for server '{server_name}'")
+
             result = await client.call_tool(tool_name, arguments)
+            logger.debug(f"Raw tool result: {result}")
 
             # 提取结果
             if result.structuredContent:
                 content = result.structuredContent
+                logger.debug(f"Using structuredContent: {content}")
             elif result.content:
                 # 提取文本内容
                 text_parts = []
@@ -448,10 +491,12 @@ If you don't need to use any tools to answer the question, respond directly with
                     if hasattr(item, "text"):
                         text_parts.append(item.text)
                 content = "\n".join(text_parts) if text_parts else "Tool executed successfully"
+                logger.debug(f"Extracted {len(text_parts)} text parts from result.content")
             else:
                 content = "Tool executed successfully (no output)"
+                logger.warning(f"Tool '{tool_key}' returned no content")
 
-            logger.info(f"Tool '{tool_key}' executed successfully")
+            logger.info(f"Tool '{tool_key}' executed successfully, result length: {len(str(content))} chars")
 
             return {
                 "tool": tool_key,

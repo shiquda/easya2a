@@ -93,10 +93,18 @@ class MCPClientManager:
     async def _initialize_stdio(self):
         """初始化stdio传输连接"""
         # 构建服务器参数
+        # 注意：env 应该包含完整的环境变量（包括系统环境变量）
+        import os
+
+        # 合并系统环境变量和配置的环境变量
+        full_env = os.environ.copy()
+        if self.config.env:
+            full_env.update(self.config.env)
+
         server_params = StdioServerParameters(
             command=self.config.command,
             args=self.config.args,
-            env=self.config.env or {},
+            env=full_env,  # 使用合并后的完整环境变量
             cwd=self.config.cwd,
         )
 
@@ -104,6 +112,8 @@ class MCPClientManager:
             f"MCP client '{self.name}' connecting via stdio "
             f"(command: {self.config.command} {' '.join(self.config.args)})"
         )
+        logger.info(f"MCP client '{self.name}' custom environment variables: {self.config.env}")
+        logger.debug(f"MCP client '{self.name}' full environment has {len(full_env)} variables")
 
         # 建立连接
         # 注意：stdio_client 是 async context manager，需要在整个生命周期内保持
@@ -257,7 +267,7 @@ class MCPClientManager:
         if not self._session:
             raise RuntimeError(f"MCP client '{self.name}' not connected")
 
-        logger.debug(
+        logger.info(
             f"MCP client '{self.name}' calling tool '{tool_name}' "
             f"with args: {arguments}"
         )
@@ -269,8 +279,26 @@ class MCPClientManager:
 
         try:
             result = await self._session.call_tool(tool_name, arguments)
-            logger.debug(f"MCP client '{self.name}' tool '{tool_name}' call completed")
+            logger.info(
+                f"MCP client '{self.name}' tool '{tool_name}' call completed. "
+                f"Result type: {type(result)}, "
+                f"has content: {bool(result.content)}, "
+                f"has structuredContent: {bool(result.structuredContent)}"
+            )
+            # Log detailed result for debugging
+            if result.content:
+                logger.debug(f"Tool result content: {result.content}")
+            if result.structuredContent:
+                logger.debug(f"Tool result structuredContent: {result.structuredContent}")
+            if hasattr(result, 'isError') and result.isError:
+                logger.warning(f"Tool '{tool_name}' returned error flag")
             return result
+        except Exception as e:
+            logger.error(
+                f"MCP client '{self.name}' tool '{tool_name}' call failed: {type(e).__name__}: {e}",
+                exc_info=True
+            )
+            raise
         finally:
             if old_proxy is not None:
                 self._restore_proxy(old_proxy)
