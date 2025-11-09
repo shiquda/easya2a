@@ -82,6 +82,63 @@ llm_providers:
   #   temperature: 0.8
   #   max_tokens: 2048
 
+  # ===================================
+  # 工具调用 (Tool Calling) 配置示例
+  # ===================================
+  # 支持原生OpenAI Tool Calling API
+  # 可以在模型配置中启用工具调用功能
+
+  # GPT-4 with Tool Calling - 带工具调用的GPT-4
+  openai-gpt4-tools:
+    provider: openai
+    model: "gpt-4"
+    api_key: "${OPENAI_API_KEY}"
+    base_url: null
+    temperature: 0.7
+    max_tokens: 2000
+    timeout: 60.0
+    max_retries: 3
+
+    # 工具调用配置
+    tool_calling:
+      enabled: true           # 启用工具调用
+      mode: native            # native（OpenAI原生API）或 prompt（提示词解析）
+      tool_choice: auto       # auto/required/none 或具体配置
+      max_iterations: 10      # 最大工具调用迭代次数
+
+      # 工具定义（JSON Schema格式）
+      # 注意：工具函数需要在代码中注册到ToolExecutor
+      tools:
+        - type: function
+          function:
+            name: get_weather
+            description: Get current weather for a given location
+            parameters:
+              type: object
+              properties:
+                location:
+                  type: string
+                  description: City and country, e.g. Paris, France
+                unit:
+                  type: string
+                  enum: [celsius, fahrenheit]
+                  description: Temperature unit
+              required: [location]
+            strict: true  # 启用严格模式确保参数格式正确
+
+        - type: function
+          function:
+            name: get_current_time
+            description: Get the current time in a specific timezone
+            parameters:
+              type: object
+              properties:
+                timezone:
+                  type: string
+                  description: Timezone name, e.g. America/New_York, Asia/Tokyo
+              required: [timezone]
+            strict: true
+
 # ===================================
 # 全局MCP服务器配置
 # ===================================
@@ -253,6 +310,27 @@ agents:
 
         User: "Translate this to Spanish in casual style: What's up?"
         Assistant: "¿Qué tal?"
+
+  # ===================================
+  # Tool-Calling Agent 示例
+  # ===================================
+  # Weather Assistant - 带工具调用能力的天气助手（已注释）
+  # 可以调用get_weather等工具获取实时信息
+  # - name: weather-assistant
+  #   description: "AI assistant with tool-calling capabilities for weather and time queries"
+  #   type: tool_calling         # Agent类型：tool_calling
+  #   host: 0.0.0.0
+  #   port: 9011
+  #   llm_provider: openai-gpt4-tools  # 引用配置了工具调用的LLM provider
+  #   provider:
+  #     organization: "Weather Services"
+  #     url: "https://weather.example.com"
+  #   extra:
+  #     system_prompt: |
+  #       You are a helpful weather assistant with access to real-time weather information.
+  #       When users ask about weather or time, use the available tools to get accurate information.
+  #       Always specify the location and unit when calling get_weather.
+  #       Provide clear and friendly responses based on the tool results.
 
   # GPT-3.5 Quick Assistant - 使用GPT-3.5的快速助手（已注释）
   # 取消注释以启用此Agent

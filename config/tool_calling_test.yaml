@@ -1,0 +1,102 @@
+# Tool-Calling Agent 测试配置
+# 这是一个简单的配置文件，用于测试工具调用功能
+
+system:
+  log_level: DEBUG  # 使用DEBUG级别查看详细日志
+  log_format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+# LLM Provider配置
+llm_providers:
+  # GPT-4 with Tool Calling
+  openai-gpt4-tools:
+    provider: openai
+    model: "gpt-4"
+    api_key: "${OPENAI_API_KEY}"
+    temperature: 0.7
+    max_tokens: 2000
+    timeout: 60.0
+    max_retries: 3
+
+    # 工具调用配置
+    tool_calling:
+      enabled: true
+      mode: native
+      tool_choice: auto
+      max_iterations: 10
+
+      # 工具定义
+      tools:
+        - type: function
+          function:
+            name: get_weather
+            description: Get current weather for a given location
+            parameters:
+              type: object
+              properties:
+                location:
+                  type: string
+                  description: City and country, e.g. Paris, France
+                unit:
+                  type: string
+                  enum: [celsius, fahrenheit]
+                  description: Temperature unit
+              required: [location]
+            strict: true
+
+        - type: function
+          function:
+            name: get_current_time
+            description: Get the current time in a specific timezone
+            parameters:
+              type: object
+              properties:
+                timezone:
+                  type: string
+                  description: Timezone name, e.g. America/New_York, Asia/Tokyo
+              required: [timezone]
+            strict: true
+
+        - type: function
+          function:
+            name: calculate
+            description: Calculate a mathematical expression
+            parameters:
+              type: object
+              properties:
+                expression:
+                  type: string
+                  description: Mathematical expression to calculate, e.g. "2 + 3 * 4"
+              required: [expression]
+            strict: true
+
+# Agent配置
+agents:
+  # Weather & Time Assistant with Tool Calling
+  - name: weather-assistant
+    description: "AI assistant with tool-calling capabilities for weather, time, and math"
+    type: tool_calling
+    host: 0.0.0.0
+    port: 9001
+    llm_provider: openai-gpt4-tools
+    provider:
+      organization: "Example Tools Inc"
+      url: "https://example.com"
+    extra:
+      system_prompt: |
+        You are a helpful assistant with access to real-time tools.
+
+        Available tools:
+        - get_weather: Get weather information for any location
+        - get_current_time: Get current time in any timezone
+        - calculate: Perform mathematical calculations
+
+        When users ask questions:
+        1. Determine if you need to use tools to answer accurately
+        2. Use the appropriate tools with correct parameters
+        3. Synthesize the tool results into a clear, helpful response
+        4. Always be friendly and conversational
+
+        Examples:
+        - "What's the weather in Paris?" -> Use get_weather with location="Paris, France"
+        - "What time is it in Tokyo?" -> Use get_current_time with timezone="Asia/Tokyo"
+        - "Calculate 15% of 200" -> Use calculate with expression="200 * 0.15"

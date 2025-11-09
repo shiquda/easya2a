@@ -22,7 +22,10 @@ from core.mcp_manager import get_mcp_pool
 # Agent implementations
 from agents.echo import EchoAgentExecutor
 from agents.llm import create_llm_executor
+from agents.llm.tool_calling_executor import create_tool_calling_executor
 from agents.mcp import MCPAgent, MCPAgentExecutor
+from core.tool_executor import ToolExecutor
+from examples.example_tools import register_example_tools
 
 
 logger = logging.getLogger(__name__)
@@ -118,6 +121,51 @@ def build_agent_executor(agent_config: AgentConfigModel):
             llm_manager=llm_manager,
             name=agent_config.name,
             system_prompt=system_prompt,
+        )
+
+    elif agent_config.type == "tool_calling":
+        # Tool-Calling LLM Agent
+        if not agent_config.llm_provider:
+            raise ValueError(
+                f"Tool-calling agent '{agent_config.name}' requires llm_provider field"
+            )
+
+        # 从全局配置获取LLM provider配置
+        config_manager = get_config_manager()
+        llm_config_model = config_manager.get_llm_provider(agent_config.llm_provider)
+
+        # 转换为LLMConfig并注册LLM管理器
+        llm_config = LLMConfig(**llm_config_model.model_dump())
+
+        # 从配置中提取tool_calling相关字段并设置到llm_config
+        if llm_config_model.tool_calling:
+            llm_config.tool_calling_enabled = llm_config_model.tool_calling.enabled
+            llm_config.tool_calling_mode = llm_config_model.tool_calling.mode
+            llm_config.tool_choice = llm_config_model.tool_calling.tool_choice
+            llm_config.tools = llm_config_model.tool_calling.tools
+            llm_config.max_tool_iterations = llm_config_model.tool_calling.max_iterations
+
+        llm_manager = register_llm_manager(agent_config.name, llm_config)
+
+        # 创建工具执行器
+        tool_executor = ToolExecutor()
+
+        # 注册示例工具函数
+        # 注意：在实际应用中，你可能需要根据配置来决定注册哪些工具
+        num_tools = register_example_tools(tool_executor)
+        logger.info(f"Registered {num_tools} example tools for agent '{agent_config.name}'")
+
+        # 获取system prompt和max_iterations
+        system_prompt = agent_config.extra.get("system_prompt")
+        max_iterations = agent_config.extra.get("max_iterations")
+
+        # 创建executor
+        return create_tool_calling_executor(
+            llm_manager=llm_manager,
+            tool_executor=tool_executor,
+            name=agent_config.name,
+            system_prompt=system_prompt,
+            max_iterations=max_iterations,
         )
 
     elif agent_config.type == "mcp":

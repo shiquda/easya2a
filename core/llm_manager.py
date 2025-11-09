@@ -56,6 +56,7 @@ class LLMResponse:
     usage: LLMUsage
     finish_reason: str = "stop"
     raw_response: Any = None
+    tool_calls: list[Any] | None = None  # OpenAI tool_calls 列表
 
 
 class LLMConfig(BaseModel):
@@ -70,6 +71,13 @@ class LLMConfig(BaseModel):
     timeout: float = Field(default=60.0)
     max_retries: int = Field(default=3)
     verify_ssl: bool = Field(default=True)  # SSL证书验证，默认启用
+
+    # 工具调用配置（可选）
+    tool_calling_enabled: bool = Field(default=False)
+    tool_calling_mode: str = Field(default="native")  # native 或 prompt
+    tool_choice: str | dict = Field(default="auto")
+    tools: list[dict[str, Any]] = Field(default_factory=list)
+    max_tool_iterations: int = Field(default=10)
 
     class Config:
         use_enum_values = True
@@ -201,6 +209,12 @@ class LLMManager:
         if self.config.max_tokens:
             params["max_tokens"] = kwargs.get("max_tokens", self.config.max_tokens)
 
+        # 添加工具调用参数
+        if self.config.tool_calling_enabled and self.config.tool_calling_mode == "native":
+            if self.config.tools:
+                params["tools"] = kwargs.get("tools", self.config.tools)
+                params["tool_choice"] = kwargs.get("tool_choice", self.config.tool_choice)
+
         # Log request details
         logger.debug(
             f"Sending chat request:\n"
@@ -208,6 +222,8 @@ class LLMManager:
             f"  Temperature: {params['temperature']}\n"
             f"  Max tokens: {params.get('max_tokens', 'unlimited')}\n"
             f"  Messages count: {len(messages)}\n"
+            f"  Tools: {len(params.get('tools', []))}\n"
+            f"  Tool choice: {params.get('tool_choice', 'N/A')}\n"
             f"  Base URL: {self.config.base_url or 'default'}"
         )
 
@@ -220,6 +236,12 @@ class LLMManager:
             # 提取响应
             choice = response.choices[0]
             content = choice.message.content or ""
+
+            # 提取工具调用（如果有）
+            tool_calls = None
+            if hasattr(choice.message, 'tool_calls') and choice.message.tool_calls:
+                tool_calls = choice.message.tool_calls
+                logger.debug(f"Received {len(tool_calls)} tool calls")
 
             # 统计使用情况
             usage = LLMUsage(
@@ -240,6 +262,7 @@ class LLMManager:
                 usage=usage,
                 finish_reason=choice.finish_reason,
                 raw_response=response,
+                tool_calls=tool_calls,
             )
 
         except openai.APIConnectionError as e:

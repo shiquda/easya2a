@@ -23,6 +23,25 @@ from core.llm_manager import LLMProvider
 logger = logging.getLogger(__name__)
 
 
+class ToolCallingMode(str, Enum):
+    """工具调用模式"""
+    NATIVE = "native"      # 使用OpenAI原生Tool Calling API
+    PROMPT = "prompt"      # 使用提示词方式，手动解析
+    DISABLED = "disabled"  # 禁用工具调用
+
+
+class ToolCallingConfig(BaseModel):
+    """工具调用配置"""
+    enabled: bool = Field(default=False, description="是否启用工具调用")
+    mode: ToolCallingMode = Field(default=ToolCallingMode.NATIVE, description="工具调用模式")
+    tool_choice: str | dict = Field(default="auto", description="工具选择策略: auto/required/none 或具体配置")
+    tools: list[dict[str, Any]] = Field(default_factory=list, description="工具定义列表（JSON Schema格式）")
+    max_iterations: int = Field(default=10, gt=0, le=50, description="最大工具调用迭代次数")
+
+    class Config:
+        use_enum_values = True
+
+
 class LLMConfigModel(BaseModel):
     """LLM配置模型"""
     provider: LLMProvider = Field(default=LLMProvider.OPENAI)
@@ -35,6 +54,9 @@ class LLMConfigModel(BaseModel):
     timeout: float = Field(default=60.0)
     max_retries: int = Field(default=3)
     verify_ssl: bool = Field(default=True)  # SSL证书验证，默认启用
+
+    # 工具调用配置（可选）
+    tool_calling: ToolCallingConfig | None = Field(default=None, description="工具调用配置")
 
     @field_validator("api_key", "base_url", mode="before")
     @classmethod
