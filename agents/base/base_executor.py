@@ -4,6 +4,7 @@
 连接BaseAgent和A2A协议的桥梁
 """
 
+import logging
 from abc import ABC
 from typing import Any
 
@@ -12,6 +13,9 @@ from a2a.server.events import EventQueue
 from a2a.utils import new_agent_text_message
 
 from agents.base.base_agent import BaseAgent
+
+
+logger = logging.getLogger(__name__)
 
 
 class BaseAgentExecutor(AgentExecutor, ABC):
@@ -48,6 +52,10 @@ class BaseAgentExecutor(AgentExecutor, ABC):
             context: 请求上下文
             event_queue: 事件队列
         """
+        # 打印接收到的消息（限制500字符）
+        context_str = str(context)[:500]
+        logger.info(f"Agent '{self.agent.name}' received request: {context_str}")
+
         # 从context提取输入（子类可以重写此方法自定义输入处理）
         input_data = await self.prepare_input(context)
 

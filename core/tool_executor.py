@@ -164,6 +164,14 @@ class ToolExecutor:
         """
         tool_name = tool_call.function.name
 
+        # 打印工具调用信息（限制500字符）
+        call_info = (
+            f"Tool: {tool_name}, "
+            f"ID: {tool_call.id}, "
+            f"Args: {tool_call.function.arguments}"
+        )[:500]
+        logger.info(f"Executing tool call: {call_info}")
+
         logger.debug(
             f"Executing tool call:\n"
             f"  Tool: {tool_name}\n"
@@ -192,7 +200,9 @@ class ToolExecutor:
             else:
                 result = tool_func(**args_dict)
 
-            logger.info(f"Tool '{tool_name}' executed successfully")
+            # 打印工具执行结果（限制500字符）
+            result_str = str(result)[:500]
+            logger.info(f"Tool '{tool_name}' result: {result_str}")
             logger.debug(f"Tool result: {result}")
 
             # 将结果转换为JSON字符串
